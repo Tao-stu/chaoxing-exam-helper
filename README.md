@@ -81,4 +81,3 @@
 - 纯 JavaScript，无外部依赖
 - 使用 UEditor API (`UE.getEditor().setContent()`) 设置简答题内容
 - 自动调用页面原生 `submitForm` / `changeQuestionCardColor` 保持状态一致
-- 支持新版 `xinwangye` 页面结构
