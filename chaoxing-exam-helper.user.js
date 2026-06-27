@@ -516,7 +516,7 @@
         });
     }
 
-    // 辅助函数：触发页面的保存机制（AJAX 保存或表单序列化）+ 更新整卷预览卡片
+    // 辅助函数：触发页面的保存机制（分批提交，避免触发反爬虫）+ 更新整卷预览卡片
     function triggerBatchSave(doneDataIds) {
         try {
             // 1. 立即更新整卷预览面板卡片颜色（即时视觉反馈，不等 AJAX 返回）
@@ -532,18 +532,50 @@
                 }
             });
 
-            // 3. 调用页面的批量保存机制
+            // 3. 分批提交，避免一次性提交太多题目触发"非法访问"
             if (typeof deTectUnSaveQues === 'function' && typeof submitForm === 'function') {
                 var questionWrap = deTectUnSaveQues();
                 if (questionWrap && questionWrap.length > 0) {
-                    submitForm(true, questionWrap, function () {
-                        // 保存成功后重新更新卡片颜色
-                        updatePreviewCards(doneDataIds);
-                        if (typeof checkSubmitButton === 'function') {
-                            try { checkSubmitButton(); } catch (e) { }
+                    var totalQues = questionWrap.length;
+                    var BATCH_SIZE = 5;   // 每批最多5题
+                    var BATCH_DELAY = 800; // 每批间隔800ms，模拟人工操作
+                    var items = questionWrap.toArray();
+                    var batches = [];
+                    for (var i = 0; i < items.length; i += BATCH_SIZE) {
+                        batches.push($(items.slice(i, i + BATCH_SIZE)));
+                    }
+                    var batchIdx = 0;
+                    var totalBatches = batches.length;
+                    var completedCount = 0;
+
+                    function submitNextBatch() {
+                        if (batchIdx >= totalBatches) {
+                            updatePreviewCards(doneDataIds);
+                            if (typeof checkSubmitButton === 'function') {
+                                try { checkSubmitButton(); } catch (e) { }
+                            }
+                            showStats('✅ 全部 ' + doneDataIds.length + ' 题已保存到服务器', 'success');
+                            return;
                         }
-                        showStats('✅ 答案已保存到服务器', 'success');
-                    });
+
+                        var batch = batches[batchIdx];
+                        var batchNum = batchIdx + 1;
+                        showStats('⏳ 正在分批保存... (' + batchNum + '/' + totalBatches + ')', '');
+
+                        // 确保当前批次的题目标记为未保存
+                        batch.each(function () {
+                            var did = $(this).attr('data') || $(this).find('.questionLi').attr('data');
+                            if (did) document.getElementById('answer' + did) && (this.classList.add('_unsavedstate'));
+                        });
+
+                        submitForm(true, batch, function () {
+                            completedCount += batch.length;
+                            batchIdx++;
+                            setTimeout(submitNextBatch, BATCH_DELAY);
+                        });
+                    }
+
+                    submitNextBatch();
                 } else if (doneDataIds && doneDataIds.length > 0) {
                     // deTectUnSaveQues 没检测到（预览模式），直接只更新卡片
                     showStats('✅ 已填入答案 (预览模式)', 'success');
